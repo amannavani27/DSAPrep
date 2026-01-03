@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "636780232300",
+    "project_id": "techapp-91eb3",
+    "storage_bucket": "techapp-91eb3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:636780232300:android:937aa5cad862bdb3c76249",
+        "android_client_info": {
+          "package_name": "com.dsaprep.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBu6_Z_UgwtnrYtjkKHOh03MYbC4M4Wctg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
