@@ -4,8 +4,8 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Topic } from '../types';
 import { CodeBlock } from './CodeBlock';
@@ -29,8 +29,10 @@ export function SwipeCard({ topic }: SwipeCardProps) {
     <View style={styles.card}>
       <ScrollView
         style={styles.scrollView}
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
         contentContainerStyle={styles.scrollContent}
+        nestedScrollEnabled={true}
+        bounces={true}
       >
         <View style={styles.header}>
           <View style={styles.badgeRow}>
@@ -93,13 +95,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+    overflow: 'hidden',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
     padding: 20,
-    paddingBottom: 10,
+    paddingBottom: 40,
   },
   header: {
     flexDirection: 'row',

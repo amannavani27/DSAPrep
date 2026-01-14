@@ -1,6 +1,6 @@
-import React, { useRef, useMemo, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView } from 'react-native';
-import Swiper from 'react-native-deck-swiper';
+import { DeckSwiper, DeckSwiperRef } from '../../components/DeckSwiper';
 import { SwipeCard } from '../../components/SwipeCard';
 import { useProgress } from '../../context/ProgressContext';
 import { Topic, TopicType } from '../../types';
@@ -24,7 +24,7 @@ export default function StudyScreen() {
   const [cardIndex, setCardIndex] = useState(0);
   const [deckFinished, setDeckFinished] = useState(false);
   const [deck, setDeck] = useState<Topic[]>([]);
-  const swiperRef = useRef<Swiper<Topic>>(null);
+  const swiperRef = useRef<DeckSwiperRef>(null);
 
   const topics = getTopicsForType(selectedTopicType);
 
@@ -221,7 +221,7 @@ export default function StudyScreen() {
       </View>
 
       <View style={styles.swiperContainer}>
-        <Swiper
+        <DeckSwiper
           key={`${selectedTopicType}-${deck.length}`}
           ref={swiperRef}
           cards={deck}
@@ -232,13 +232,7 @@ export default function StudyScreen() {
           onSwipedLeft={handleSwipedLeft}
           onSwipedRight={handleSwipedRight}
           onSwipedAll={handleSwipedAll}
-          cardVerticalMargin={20}
-          cardHorizontalMargin={20}
           stackSize={3}
-          stackSeparation={15}
-          animateCardOpacity
-          animateOverlayLabelsOpacity
-          backgroundColor="transparent"
           overlayLabels={{
             left: {
               title: 'KNOW IT',
@@ -255,8 +249,6 @@ export default function StudyScreen() {
               },
             },
           }}
-          disableTopSwipe
-          disableBottomSwipe
         />
       </View>
 

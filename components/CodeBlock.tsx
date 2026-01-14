@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { useGesture } from '../context/GestureContext';
 
 interface CodeBlockProps {
   code: string;
@@ -7,20 +8,41 @@ interface CodeBlockProps {
 }
 
 export function CodeBlock({ code, language }: CodeBlockProps) {
+  const { shouldBlockSwipe } = useGesture();
+
+  const handleTouchStart = () => {
+    shouldBlockSwipe.current = true;
+  };
+
+  const handleTouchEnd = () => {
+    // Small delay to ensure the gesture is complete
+    setTimeout(() => {
+      shouldBlockSwipe.current = false;
+    }, 100);
+  };
+
   return (
-    <View style={styles.container}>
+    <View
+      style={styles.container}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+    >
       <View style={styles.header}>
         <Text style={styles.language}>{language}</Text>
       </View>
       <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.scrollView}
+        style={styles.verticalScroll}
+        nestedScrollEnabled={true}
+        showsVerticalScrollIndicator={true}
+        scrollEventThrottle={16}
       >
         <ScrollView
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={false}
-          style={styles.codeScrollView}
+          horizontal={true}
+          nestedScrollEnabled={true}
+          showsHorizontalScrollIndicator={true}
+          scrollEventThrottle={16}
+          contentContainerStyle={styles.horizontalContent}
         >
           <Text style={styles.code}>{code}</Text>
         </ScrollView>
@@ -47,11 +69,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textTransform: 'uppercase',
   },
-  scrollView: {
+  verticalScroll: {
     maxHeight: 200,
-  },
-  codeScrollView: {
     padding: 12,
+  },
+  horizontalContent: {
+    flexGrow: 1,
   },
   code: {
     fontFamily: 'Menlo',

@@ -1,10 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, getDoc, setDoc, onSnapshot } from '@react-native-firebase/firestore';
+import firestore from '@react-native-firebase/firestore';
 import { TopicProgress, AppState, TopicType, Topic } from '../types';
 import { dsaTopics } from '../data/topics';
 import { systemDesignTopics } from '../data/systemDesignTopics';
-import { db } from '../config/firebase';
 import { useAuth } from './AuthContext';
 
 const STORAGE_KEY = '@dsa_prep_state';
@@ -15,6 +14,13 @@ interface Stats {
   unseen: number;
   total: number;
   percentComplete: number;
+}
+
+interface FirestoreData {
+  progress: Record<string, TopicProgress>;
+  bookmarks: string[];
+  selectedTopicType: TopicType;
+  lastUpdated: number;
 }
 
 interface ProgressContextType {
@@ -68,56 +74,66 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
   // Track if update came from Firestore to prevent infinite loop
   const isRemoteUpdate = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLocalUpdate = useRef<number>(0);
 
   // Load from local storage on mount
   useEffect(() => {
     loadLocalState();
   }, []);
 
-  // Sync with Firestore when user logs in
+  // Set up Firestore listener when user is authenticated
   useEffect(() => {
     if (!isAuthenticated || !user) {
       return;
     }
 
-    const userDocRef = doc(db, 'users', user.uid);
+    const userDocRef = firestore().collection('users').doc(user.uid);
 
     // Listen for real-time updates from Firestore
-    const unsubscribe = onSnapshot(
-      userDocRef,
-      (docSnapshot) => {
-        if (docSnapshot.exists()) {
-          const data = docSnapshot.data();
-          // Mark as remote update to prevent saving back to Firestore
-          isRemoteUpdate.current = true;
+    const unsubscribe = userDocRef.onSnapshot(
+      (doc) => {
+        if (doc.exists) {
+          const data = doc.data() as FirestoreData;
 
-          if (data?.progress) {
-            setProgress(data.progress);
-          }
-          if (data?.bookmarks) {
-            setBookmarks(data.bookmarks);
-          }
-          if (data?.selectedTopicType) {
-            setSelectedTopicTypeState(data.selectedTopicType);
-          }
+          // Only update if the remote data is newer than our last local update
+          if (data.lastUpdated && data.lastUpdated > lastLocalUpdate.current) {
+            isRemoteUpdate.current = true;
 
-          // Reset flag after state updates are processed
-          setTimeout(() => {
-            isRemoteUpdate.current = false;
-          }, 100);
+            if (data.progress) {
+              setProgress(data.progress);
+            }
+            if (data.bookmarks) {
+              setBookmarks(data.bookmarks);
+            }
+            if (data.selectedTopicType) {
+              setSelectedTopicTypeState(data.selectedTopicType);
+            }
+
+            // Also update local storage with remote data
+            saveToLocalStorage(data.progress, data.bookmarks, data.selectedTopicType);
+
+            // Reset the flag after a short delay to allow state updates to complete
+            setTimeout(() => {
+              isRemoteUpdate.current = false;
+            }, 100);
+          }
         }
       },
       (error) => {
-        console.error('Firestore snapshot error:', error);
+        console.error('Firestore listener error:', error);
+        setSyncError('Failed to sync with cloud. Changes saved locally.');
       }
     );
+
+    // Initial sync: merge local and remote data
+    syncWithFirestore();
 
     return () => unsubscribe();
   }, [isAuthenticated, user]);
 
-  // Save to local storage whenever progress changes (debounced)
+  // Save to Firestore whenever progress changes (debounced)
   useEffect(() => {
-    if (!isLoaded || isRemoteUpdate.current) {
+    if (!isLoaded || isRemoteUpdate.current || !isAuthenticated || !user) {
       return;
     }
 
@@ -126,11 +142,11 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(saveTimeoutRef.current);
     }
 
+    setHasPendingChanges(true);
+
     saveTimeoutRef.current = setTimeout(() => {
-      saveToLocalStorage();
-      if (isAuthenticated && user) {
-        saveToFirestore();
-      }
+      saveToLocalStorage(progress, bookmarks, selectedTopicType);
+      saveToFirestore();
     }, 500);
 
     return () => {
@@ -139,6 +155,27 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
       }
     };
   }, [progress, bookmarks, selectedTopicType, isLoaded, isAuthenticated, user]);
+
+  // Save to local storage when not authenticated
+  useEffect(() => {
+    if (!isLoaded || isRemoteUpdate.current || isAuthenticated) {
+      return;
+    }
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      saveToLocalStorage(progress, bookmarks, selectedTopicType);
+    }, 500);
+
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [progress, bookmarks, selectedTopicType, isLoaded, isAuthenticated]);
 
   const loadLocalState = async () => {
     try {
@@ -156,12 +193,16 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const saveToLocalStorage = async () => {
+  const saveToLocalStorage = async (
+    progressData: Record<string, TopicProgress> = progress,
+    bookmarksData: string[] = bookmarks,
+    topicType: TopicType = selectedTopicType
+  ) => {
     const state: AppState = {
-      progress,
-      bookmarks,
+      progress: progressData,
+      bookmarks: bookmarksData,
       currentDeckIndex: 0,
-      selectedTopicType,
+      selectedTopicType: topicType,
     };
 
     try {
@@ -171,27 +212,94 @@ export function ProgressProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const syncWithFirestore = async () => {
+    if (!user) return;
+
+    setIsSyncing(true);
+    setSyncError(null);
+
+    try {
+      const userDocRef = firestore().collection('users').doc(user.uid);
+      const doc = await userDocRef.get();
+
+      if (doc.exists) {
+        const remoteData = doc.data() as FirestoreData;
+
+        // Merge strategy: use the most recent data for each topic
+        const mergedProgress = { ...remoteData.progress };
+
+        Object.keys(progress).forEach((topicId) => {
+          const localTopic = progress[topicId];
+          const remoteTopic = remoteData.progress?.[topicId];
+
+          if (!remoteTopic || (localTopic.lastSeen || 0) > (remoteTopic.lastSeen || 0)) {
+            mergedProgress[topicId] = localTopic;
+          }
+        });
+
+        // Merge bookmarks (union of both)
+        const mergedBookmarks = Array.from(
+          new Set([...(remoteData.bookmarks || []), ...bookmarks])
+        );
+
+        // Update local state with merged data
+        isRemoteUpdate.current = true;
+        setProgress(mergedProgress);
+        setBookmarks(mergedBookmarks);
+
+        setTimeout(() => {
+          isRemoteUpdate.current = false;
+        }, 100);
+
+        // Save merged data back to Firestore
+        const now = Date.now();
+        lastLocalUpdate.current = now;
+
+        await userDocRef.set({
+          progress: mergedProgress,
+          bookmarks: mergedBookmarks,
+          selectedTopicType,
+          lastUpdated: now,
+        });
+
+        // Update local storage
+        await saveToLocalStorage(mergedProgress, mergedBookmarks, selectedTopicType);
+      } else {
+        // No remote data, upload local data
+        await saveToFirestore();
+      }
+    } catch (error) {
+      console.error('Failed to sync with Firestore:', error);
+      setSyncError('Failed to sync with cloud. Changes saved locally.');
+    } finally {
+      setIsSyncing(false);
+      setHasPendingChanges(false);
+    }
+  };
+
   const saveToFirestore = async () => {
     if (!user) return;
 
-    setHasPendingChanges(true);
+    setIsSyncing(true);
+    setSyncError(null);
+
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      await setDoc(userDocRef, {
+      const now = Date.now();
+      lastLocalUpdate.current = now;
+
+      await firestore().collection('users').doc(user.uid).set({
         progress,
         bookmarks,
         selectedTopicType,
-        updatedAt: new Date().toISOString(),
-      }, { merge: true });
-      setSyncError(null);
+        lastUpdated: now,
+      });
+
       setHasPendingChanges(false);
-    } catch (error: any) {
+    } catch (error) {
       console.error('Failed to save to Firestore:', error);
-      if (error?.code === 'firestore/unavailable') {
-        setSyncError('Offline - changes will sync when connected');
-      } else {
-        setSyncError('Sync pending');
-      }
+      setSyncError('Failed to sync with cloud. Changes saved locally.');
+    } finally {
+      setIsSyncing(false);
     }
   };
 

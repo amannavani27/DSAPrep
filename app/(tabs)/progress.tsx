@@ -17,6 +17,7 @@ const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function ProgressScreen() {
   const {
+    progress,
     dsaStats,
     systemDesignStats,
     getTopicStatus,
@@ -33,8 +34,13 @@ export default function ProgressScreen() {
   const currentStats = activeTab === 'dsa' ? dsaStats : systemDesignStats;
   const currentTopics = getTopicsForType(activeTab);
 
-  const knownTopics = currentTopics.filter((t) => getTopicStatus(t.id) === 'known');
-  const reviewTopics = currentTopics.filter((t) => getTopicStatus(t.id) === 'review');
+  // Sort by lastSeen descending (most recent first)
+  const knownTopics = currentTopics
+    .filter((t) => getTopicStatus(t.id) === 'known')
+    .sort((a, b) => (progress[b.id]?.lastSeen || 0) - (progress[a.id]?.lastSeen || 0));
+  const reviewTopics = currentTopics
+    .filter((t) => getTopicStatus(t.id) === 'review')
+    .sort((a, b) => (progress[b.id]?.lastSeen || 0) - (progress[a.id]?.lastSeen || 0));
   const unseenTopics = currentTopics.filter((t) => getTopicStatus(t.id) === 'unseen');
 
   const handleTopicPress = (topic: Topic) => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,13 +6,20 @@ import {
   TouchableOpacity,
   Alert,
   ScrollView,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
 import { useProgress } from '../../context/ProgressContext';
 
 export default function ProfileScreen() {
-  const { user, logout, isAuthenticated } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
   const { dsaStats, systemDesignStats, isSyncing } = useProgress();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const handleLogout = () => {
     Alert.alert(
@@ -33,6 +40,50 @@ export default function ProfileScreen() {
         },
       ]
     );
+  };
+
+  const handleDeleteAccountPress = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to permanently delete your account? This action cannot be undone and all your data will be lost.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Account',
+          style: 'destructive',
+          onPress: () => {
+            setDeleteError(null);
+            setDeletePassword('');
+            setShowDeleteModal(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletePassword) {
+      setDeleteError('Please enter your password.');
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await deleteAccount(deletePassword);
+      setShowDeleteModal(false);
+    } catch (error: any) {
+      setDeleteError(error.message || 'Failed to delete account. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteModal(false);
+    setDeletePassword('');
+    setDeleteError(null);
   };
 
   return (
@@ -105,7 +156,65 @@ export default function ProfileScreen() {
           <Text style={styles.menuItemText}>Sign Out</Text>
           <Text style={styles.menuItemIcon}>{'>'}</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.menuItem, styles.deleteMenuItem]} onPress={handleDeleteAccountPress}>
+          <Text style={styles.deleteMenuItemText}>Delete Account</Text>
+          <Text style={styles.menuItemIcon}>{'>'}</Text>
+        </TouchableOpacity>
       </View>
+
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelDelete}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Confirm Account Deletion</Text>
+            <Text style={styles.modalDescription}>
+              Please enter your password to confirm account deletion. This action is permanent and cannot be undone.
+            </Text>
+
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter your password"
+              placeholderTextColor="#6c7086"
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              editable={!isDeleting}
+              autoCapitalize="none"
+            />
+
+            {deleteError && (
+              <Text style={styles.errorText}>{deleteError}</Text>
+            )}
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={handleCancelDelete}
+                disabled={isDeleting}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.confirmDeleteButton]}
+                onPress={handleConfirmDelete}
+                disabled={isDeleting}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.confirmDeleteButtonText}>Delete</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>Interview Prep v1.0</Text>
@@ -208,13 +317,95 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
+  deleteMenuItem: {
+    marginTop: 12,
+    backgroundColor: 'rgba(220, 38, 38, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(220, 38, 38, 0.3)',
+  },
   menuItemText: {
     fontSize: 16,
     color: '#e94560',
   },
+  deleteMenuItemText: {
+    fontSize: 16,
+    color: '#dc2626',
+  },
   menuItemIcon: {
     fontSize: 16,
     color: '#6c7086',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#16213e',
+    borderRadius: 16,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#a6adc8',
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  passwordInput: {
+    backgroundColor: '#0f0f23',
+    borderRadius: 12,
+    padding: 16,
+    fontSize: 16,
+    color: '#fff',
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#313244',
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#313244',
+  },
+  cancelButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmDeleteButton: {
+    backgroundColor: '#dc2626',
+  },
+  confirmDeleteButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   footer: {
     alignItems: 'center',

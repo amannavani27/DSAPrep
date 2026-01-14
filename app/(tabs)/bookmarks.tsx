@@ -14,7 +14,10 @@ export default function BookmarksScreen() {
   const { bookmarks, toggleBookmark, getTopicStatus, allTopics } = useProgress();
   const [activeTab, setActiveTab] = useState<TopicType | 'all'>('all');
 
-  const bookmarkedTopics = allTopics.filter((t) => bookmarks.includes(t.id));
+  // Sort by bookmark order (most recent first - newer bookmarks are at the end of the array)
+  const bookmarkedTopics = allTopics
+    .filter((t) => bookmarks.includes(t.id))
+    .sort((a, b) => bookmarks.indexOf(b.id) - bookmarks.indexOf(a.id));
 
   const filteredBookmarks = activeTab === 'all'
     ? bookmarkedTopics

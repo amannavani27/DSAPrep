@@ -1,17 +1,11 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  updateProfile,
-  FirebaseAuthTypes,
-} from '@react-native-firebase/auth';
-import { doc, setDoc } from '@react-native-firebase/firestore';
+import auth, { FirebaseAuthTypes } from '@react-native-firebase/auth';
 
-type User = FirebaseAuthTypes.User;
-import { auth, db } from '../config/firebase';
+type User = {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+};
 
 // Input validation utilities
 function validateEmail(email: string): string | null {
@@ -51,11 +45,21 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   error: string | null;
   clearError: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function mapFirebaseUser(firebaseUser: FirebaseAuthTypes.User | null): User | null {
+  if (!firebaseUser) return null;
+  return {
+    uid: firebaseUser.uid,
+    email: firebaseUser.email,
+    displayName: firebaseUser.displayName,
+  };
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -63,8 +67,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
+    // Subscribe to auth state changes
+    const unsubscribe = auth().onAuthStateChanged((firebaseUser) => {
+      setUser(mapFirebaseUser(firebaseUser));
       setIsLoading(false);
     });
 
@@ -72,102 +77,125 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleSignUp = async (email: string, password: string, displayName: string) => {
+    // Validate inputs
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      throw new Error(emailError);
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      throw new Error(passwordError);
+    }
+
+    const nameError = validateDisplayName(displayName);
+    if (nameError) {
+      setError(nameError);
+      throw new Error(nameError);
+    }
+
+    setError(null);
+
     try {
-      setError(null);
-
-      // Validate inputs before making any API calls
-      const emailError = validateEmail(email);
-      if (emailError) {
-        setError(emailError);
-        throw new Error(emailError);
-      }
-
-      const passwordError = validatePassword(password);
-      if (passwordError) {
-        setError(passwordError);
-        throw new Error(passwordError);
-      }
-
-      const displayNameError = validateDisplayName(displayName);
-      if (displayNameError) {
-        setError(displayNameError);
-        throw new Error(displayNameError);
-      }
-
-      const sanitizedName = sanitizeDisplayName(displayName);
-      const trimmedEmail = email.trim().toLowerCase();
-
-      setIsLoading(true);
-      const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
+      // Create user account
+      const userCredential = await auth().createUserWithEmailAndPassword(
+        email.trim(),
+        password
+      );
 
       // Update display name
-      await updateProfile(userCredential.user, { displayName: sanitizedName });
-
-      // Create user document in Firestore
-      const userDocRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userDocRef, {
-        email: trimmedEmail,
-        displayName: sanitizedName,
-        createdAt: new Date().toISOString(),
-        progress: {},
-        bookmarks: [],
+      await userCredential.user.updateProfile({
+        displayName: sanitizeDisplayName(displayName),
       });
+
+      // Refresh user to get updated profile
+      await auth().currentUser?.reload();
+      setUser(mapFirebaseUser(auth().currentUser));
     } catch (err: any) {
-      if (err.code) {
-        setError(getErrorMessage(err.code));
-      }
+      const message = getErrorMessage(err.code);
+      setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const handleSignIn = async (email: string, password: string) => {
+    // Validate inputs
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      throw new Error(emailError);
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      setError(passwordError);
+      throw new Error(passwordError);
+    }
+
+    setError(null);
+
     try {
-      setError(null);
-
-      // Validate inputs before making any API calls
-      const emailError = validateEmail(email);
-      if (emailError) {
-        setError(emailError);
-        throw new Error(emailError);
-      }
-
-      if (!password) {
-        setError('Password is required.');
-        throw new Error('Password is required.');
-      }
-
-      const trimmedEmail = email.trim().toLowerCase();
-
-      setIsLoading(true);
-      await signInWithEmailAndPassword(auth, trimmedEmail, password);
+      await auth().signInWithEmailAndPassword(email.trim(), password);
     } catch (err: any) {
-      if (err.code) {
-        setError(getErrorMessage(err.code));
-      }
+      const message = getErrorMessage(err.code);
+      setError(message);
       throw err;
-    } finally {
-      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-      setError(null);
-      await signOut(auth);
+      await auth().signOut();
     } catch (err: any) {
-      setError(getErrorMessage(err.code));
+      const message = getErrorMessage(err.code);
+      setError(message);
       throw err;
     }
   };
 
   const handleResetPassword = async (email: string) => {
+    const emailError = validateEmail(email);
+    if (emailError) {
+      setError(emailError);
+      throw new Error(emailError);
+    }
+
+    setError(null);
+
     try {
-      setError(null);
-      await sendPasswordResetEmail(auth, email);
+      await auth().sendPasswordResetEmail(email.trim());
     } catch (err: any) {
-      setError(getErrorMessage(err.code));
+      const message = getErrorMessage(err.code);
+      setError(message);
+      throw err;
+    }
+  };
+
+  const handleDeleteAccount = async (password: string) => {
+    const currentUser = auth().currentUser;
+    if (!currentUser || !currentUser.email) {
+      const message = 'No user is currently signed in.';
+      setError(message);
+      throw new Error(message);
+    }
+
+    setError(null);
+
+    try {
+      // Re-authenticate user before deletion (required by Firebase for sensitive operations)
+      const credential = auth.EmailAuthProvider.credential(
+        currentUser.email,
+        password
+      );
+      await currentUser.reauthenticateWithCredential(credential);
+
+      // Delete the user account
+      await currentUser.delete();
+    } catch (err: any) {
+      const message = getErrorMessage(err.code);
+      setError(message);
       throw err;
     }
   };
@@ -184,6 +212,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn: handleSignIn,
         logout,
         resetPassword: handleResetPassword,
+        deleteAccount: handleDeleteAccount,
         error,
         clearError,
       }}

@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ProgressProvider } from '../context/ProgressContext';
+import { GestureProvider } from '../context/GestureContext';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 
 function RootLayoutNav() {
@@ -34,13 +35,15 @@ function RootLayoutNav() {
   }
 
   return (
-    <ProgressProvider>
-      <StatusBar style="light" />
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="auth" />
-      </Stack>
-    </ProgressProvider>
+    <GestureProvider>
+      <ProgressProvider>
+        <StatusBar style="light" />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="auth" />
+        </Stack>
+      </ProgressProvider>
+    </GestureProvider>
   );
 }
 
