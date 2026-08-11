@@ -13,7 +13,7 @@
     "@react-native-firebase/app": "^23.7.0",
     "@react-native-firebase/auth": "^23.7.0",
     "@react-native-firebase/firestore": "^23.7.0",
-    "expo": "~54.0.30",
+    "expo": "~57.0.12",
     "expo-build-properties": "~1.0.10",
     "expo-constants": "~18.0.12",
     "expo-dev-client": "~6.0.20",
